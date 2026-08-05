@@ -1,217 +1,494 @@
-<p align="center">
-  <img src="docs/assets/signlearn-banner.png" alt="SignLearn banner" width="100%">
-</p>
-
-<h1 align="center">SignLearn</h1>
-
-<p align="center">
-  Recognizing 50 isolated ASL signs from short videos with landmarks, motion features, and a
-  confidence-aware prediction policy.
-</p>
-
-<p align="center">
-  <img alt="Python 3.11" src="https://img.shields.io/badge/Python-3.11-3776AB?logo=python&logoColor=white">
-  <img alt="TensorFlow 2.20" src="https://img.shields.io/badge/TensorFlow-2.20-FF6F00?logo=tensorflow&logoColor=white">
-  <img alt="Tests 7 passing" src="https://img.shields.io/badge/tests-7%20passing-2ea44f">
-  <img alt="Code license MIT" src="https://img.shields.io/badge/code-MIT-blue">
-</p>
-
-SignLearn started as my project after completing the Deep Learning Specialization. I wanted to take
-the sequence models, regularization, error analysis, and transfer-learning ideas from the courses
-and use them in something more complete than a training notebook. The result is a small local web
-app backed by a signer-independent evaluation and a reproducible model-selection trail.
-
-This is deliberately a narrow project: it classifies one pre-segmented sign from a fixed 50-label
-vocabulary. It does not translate ASL sentences or assess someone's signing ability.
-
-## Demo
-
-<p align="center">
-  <img src="docs/assets/signlearn-interface.png" alt="SignLearn running in the browser" width="900">
-</p>
-
-Record with a webcam or upload an MP4/WebM clip. The app first checks whether MediaPipe can see
-enough of the hands, face, and shoulders. If the clip passes that check, the model returns its top
-three predictions. Predictions below the operational confidence threshold are withheld and shown
-as a retry instead.
-
-## Results
-
-The current model uses 492 features per frame. I selected its checkpoint by validation macro F1,
-then compared it with the previous 189-feature model on the same frozen, signer-disjoint internal
-holdout.
-
-| Metric | Previous model | Current model | Difference |
-|---|---:|---:|---:|
-| Top-1 accuracy | 71.13% | **71.69%** | +0.56 pp |
-| Macro F1 | 71.04% | **71.60%** | +0.56 pp |
-| Mirrored macro F1 | 69.88% | **70.98%** | +1.10 pp |
-| Top-5 accuracy | **90.03%** | 89.69% | -0.34 pp |
-| Accepted accuracy at the selected threshold | 83.68% | **84.03%** | +0.35 pp |
-| Coverage at the selected threshold | 77.43% | **77.50%** | +0.07 pp |
-
-The top-5 regression is included because the new model did not improve every metric. At its 0.60
-validation-selected threshold, the current model covered 77.50% of the internal holdout with 84.03%
-accuracy on accepted clips. The web app uses a stricter provisional threshold of 0.71 until it can
-be calibrated on a separate webcam dataset.
-
-These are internal comparison results, not evidence of real-world ASL accessibility performance.
-The Google holdout had appeared in earlier project reports, and WLASL was kept out of development.
-
-## How it works
-
-```mermaid
-flowchart LR
-    A["Webcam or uploaded clip"] --> B["MediaPipe Holistic"]
-    B --> C{"Landmark quality OK?"}
-    C -->|No| D["Give recording advice"]
-    C -->|Yes| E["Sample 48 frames"]
-    E --> F["189 normalized landmark features"]
-    F --> G["Velocity + acceleration + geometry"]
-    G --> H["492-feature sequence"]
-    H --> I["BiLSTM + self-attention"]
-    I --> J{"Confidence at least 0.71?"}
-    J -->|No| D
-    J -->|Yes| K["Show top three predictions"]
-```
-
-Each model input has shape `(1, 48, 492)`:
-
-| Feature block | Size | Contents |
-|---|---:|---|
-| Base | 189 | hand, pose and selected lip landmarks plus detection indicators |
-| Velocity | 144 | frame-to-frame change in hands and selected pose points |
-| Acceleration | 144 | change in the masked velocity channels |
-| Geometry | 15 | distances between hands, face, shoulders and fingertips |
-
-Motion and distance features are set to zero when their source landmarks are missing. That detail
-matters: otherwise a failed hand detection can look like a large movement.
-
-The 492-feature network was initialized from the stronger 189-feature model. Existing projection
-weights were copied exactly and the rows for new features were initialized to zero. Before
-fine-tuning, I checked that both networks produced identical probabilities when the new channels
-were zero. The experiment history, including the candidate that failed the first promotion gate,
-is kept under [`research/`](research/).
-
-## Run locally
-
-### What you need
-
-- 64-bit Python 3.11
-- Git
-- a webcam or a short MP4/WebM clip
-- internet access on the first run to download the MediaPipe Holistic task file
-
-### Windows
-
-Clone the repository using GitHub's **Code** button, open PowerShell in the cloned directory, then
-run:
-
-```powershell
-Set-ExecutionPolicy -Scope Process Bypass
-.\run_app.ps1
-```
-
-The launcher creates its environment under `%LOCALAPPDATA%\SignLearn`. This short path avoids the
-Windows long-path error caused by TensorFlow's nested header files.
-
-### Linux or macOS
-
-```bash
-chmod +x run_app.sh
-./run_app.sh
-```
-
-Open <http://127.0.0.1:7860> after the server starts.
-
-### Manual setup
-
-```bash
-python3.11 -m venv .venv
-# Linux/macOS
-source .venv/bin/activate
-# Windows PowerShell: .venv\Scripts\Activate.ps1
-
-python -m pip install --upgrade pip
-python -m pip install -r requirements.txt
-python app.py
-```
-
-## Check the installation
-
-The repository contains a data-free evaluation test that verifies the final audit JSON, comparison
-CSV, promotion rules, model manifest, selective metrics, and model hash agree with one another:
-
-```bash
-python -m unittest tests.test_evaluation_evidence -v
-```
-
-To test the complete video pipeline, start the app and upload a recording you own or have permission
-to use. See [`sample_videos/README.md`](sample_videos/README.md) for recording guidance and a command
-that removes audio and metadata. Third-party dataset recordings are not included.
-
-The fast tests do not import TensorFlow:
-
-```bash
-python -m pip install -r requirements-dev.txt
-python -m unittest discover -s tests -v
-ruff format --check app.py signlearn tests
-ruff check app.py signlearn tests
-```
-
-They check the feature layout and missing-landmark behavior, metadata consistency, label ordering,
-confidence policy, and model SHA-256 hash. The same commands run in GitHub Actions.
-
-## Project structure
-
-```text
-app.py                     Gradio interface
-signlearn/
-  engine.py                model loading and prediction
-  preprocessing.py         48 x 492 feature pipeline
-  video.py                 video decoding and MediaPipe tracking
-models/                    trained model and frozen metadata
-sample_videos/             instructions; local recordings are Git-ignored
-tests/                     fast contract tests
-research/
-  notebooks/               mirror, ablation, transfer and audit notebooks
-  results/                 frozen model-selection evidence
-paper/                     Markdown and LaTeX manuscript sources
-docs/assets/               banner and interface screenshot
-```
-
-The main supporting documents are:
-
-- [`MODEL_CARD.md`](MODEL_CARD.md) — intended use, metrics and known limitations
-- [`DATA_CARD.md`](DATA_CARD.md) — dataset split and provenance notes
-- [`REPRODUCIBILITY.md`](REPRODUCIBILITY.md) — experiment order and frozen checks
-- [`ETHICS.md`](ETHICS.md) — consent, privacy and claims I intentionally avoid
-- [`paper/signlearn_paper.md`](paper/signlearn_paper.md) — full draft paper and references
-
-## Known limitations
-
-- The model recognizes only the 50 labels in [`models/label_map.json`](models/label_map.json).
-- It expects one already-segmented sign, not a continuous conversation.
-- Landmark tracking can fail with occlusion, fast movement, poor lighting or unusual camera angles.
-- Confidence is used as a retry policy; it has not been calibrated on an independent webcam study.
-- The available metadata are not sufficient for credible demographic subgroup claims.
-- No user study has established learning benefit or accessibility impact.
-
-Do not use this project for interpreting, emergencies, grading, hiring, medical decisions, access
-control, or any other consequential decision. Get consent before recording another person.
-
-## Research and citation
-
-The manuscript is available in [Markdown](paper/signlearn_paper.md) and
-[LaTeX](paper/signlearn_paper.tex), with a separate [BibTeX file](paper/references.bib). It cites the
-dataset and the relevant sign-language recognition, landmark-tracking, temporal-modeling and
-selective-prediction literature.
-
-Before publishing a fork, add your identity to `CITATION.cff` and the manuscript. Also complete the
-[`GITHUB_PUBLISHING_CHECKLIST.md`](GITHUB_PUBLISHING_CHECKLIST.md).
-
-## License
-
-The source code is available under the [MIT License](LICENSE). The code license does not grant
-rights to the Google/Kaggle data, the trained weights, MediaPipe assets, or third-party packages.
-Read [`MODEL_LICENSE.md`](MODEL_LICENSE.md) and [`NOTICE`](NOTICE) before redistributing those files.
+[
+  "left_hand_0_x",
+  "left_hand_0_y",
+  "left_hand_0_z",
+  "left_hand_1_x",
+  "left_hand_1_y",
+  "left_hand_1_z",
+  "left_hand_2_x",
+  "left_hand_2_y",
+  "left_hand_2_z",
+  "left_hand_3_x",
+  "left_hand_3_y",
+  "left_hand_3_z",
+  "left_hand_4_x",
+  "left_hand_4_y",
+  "left_hand_4_z",
+  "left_hand_5_x",
+  "left_hand_5_y",
+  "left_hand_5_z",
+  "left_hand_6_x",
+  "left_hand_6_y",
+  "left_hand_6_z",
+  "left_hand_7_x",
+  "left_hand_7_y",
+  "left_hand_7_z",
+  "left_hand_8_x",
+  "left_hand_8_y",
+  "left_hand_8_z",
+  "left_hand_9_x",
+  "left_hand_9_y",
+  "left_hand_9_z",
+  "left_hand_10_x",
+  "left_hand_10_y",
+  "left_hand_10_z",
+  "left_hand_11_x",
+  "left_hand_11_y",
+  "left_hand_11_z",
+  "left_hand_12_x",
+  "left_hand_12_y",
+  "left_hand_12_z",
+  "left_hand_13_x",
+  "left_hand_13_y",
+  "left_hand_13_z",
+  "left_hand_14_x",
+  "left_hand_14_y",
+  "left_hand_14_z",
+  "left_hand_15_x",
+  "left_hand_15_y",
+  "left_hand_15_z",
+  "left_hand_16_x",
+  "left_hand_16_y",
+  "left_hand_16_z",
+  "left_hand_17_x",
+  "left_hand_17_y",
+  "left_hand_17_z",
+  "left_hand_18_x",
+  "left_hand_18_y",
+  "left_hand_18_z",
+  "left_hand_19_x",
+  "left_hand_19_y",
+  "left_hand_19_z",
+  "left_hand_20_x",
+  "left_hand_20_y",
+  "left_hand_20_z",
+  "right_hand_0_x",
+  "right_hand_0_y",
+  "right_hand_0_z",
+  "right_hand_1_x",
+  "right_hand_1_y",
+  "right_hand_1_z",
+  "right_hand_2_x",
+  "right_hand_2_y",
+  "right_hand_2_z",
+  "right_hand_3_x",
+  "right_hand_3_y",
+  "right_hand_3_z",
+  "right_hand_4_x",
+  "right_hand_4_y",
+  "right_hand_4_z",
+  "right_hand_5_x",
+  "right_hand_5_y",
+  "right_hand_5_z",
+  "right_hand_6_x",
+  "right_hand_6_y",
+  "right_hand_6_z",
+  "right_hand_7_x",
+  "right_hand_7_y",
+  "right_hand_7_z",
+  "right_hand_8_x",
+  "right_hand_8_y",
+  "right_hand_8_z",
+  "right_hand_9_x",
+  "right_hand_9_y",
+  "right_hand_9_z",
+  "right_hand_10_x",
+  "right_hand_10_y",
+  "right_hand_10_z",
+  "right_hand_11_x",
+  "right_hand_11_y",
+  "right_hand_11_z",
+  "right_hand_12_x",
+  "right_hand_12_y",
+  "right_hand_12_z",
+  "right_hand_13_x",
+  "right_hand_13_y",
+  "right_hand_13_z",
+  "right_hand_14_x",
+  "right_hand_14_y",
+  "right_hand_14_z",
+  "right_hand_15_x",
+  "right_hand_15_y",
+  "right_hand_15_z",
+  "right_hand_16_x",
+  "right_hand_16_y",
+  "right_hand_16_z",
+  "right_hand_17_x",
+  "right_hand_17_y",
+  "right_hand_17_z",
+  "right_hand_18_x",
+  "right_hand_18_y",
+  "right_hand_18_z",
+  "right_hand_19_x",
+  "right_hand_19_y",
+  "right_hand_19_z",
+  "right_hand_20_x",
+  "right_hand_20_y",
+  "right_hand_20_z",
+  "pose_0_x",
+  "pose_0_y",
+  "pose_11_x",
+  "pose_11_y",
+  "pose_12_x",
+  "pose_12_y",
+  "pose_13_x",
+  "pose_13_y",
+  "pose_14_x",
+  "pose_14_y",
+  "pose_15_x",
+  "pose_15_y",
+  "pose_16_x",
+  "pose_16_y",
+  "pose_23_x",
+  "pose_23_y",
+  "pose_24_x",
+  "pose_24_y",
+  "lip_0_x",
+  "lip_0_y",
+  "lip_13_x",
+  "lip_13_y",
+  "lip_14_x",
+  "lip_14_y",
+  "lip_17_x",
+  "lip_17_y",
+  "lip_61_x",
+  "lip_61_y",
+  "lip_78_x",
+  "lip_78_y",
+  "lip_81_x",
+  "lip_81_y",
+  "lip_82_x",
+  "lip_82_y",
+  "lip_87_x",
+  "lip_87_y",
+  "lip_88_x",
+  "lip_88_y",
+  "lip_91_x",
+  "lip_91_y",
+  "lip_95_x",
+  "lip_95_y",
+  "lip_291_x",
+  "lip_291_y",
+  "lip_308_x",
+  "lip_308_y",
+  "lip_311_x",
+  "lip_311_y",
+  "lip_312_x",
+  "lip_312_y",
+  "lip_317_x",
+  "lip_317_y",
+  "lip_318_x",
+  "lip_318_y",
+  "lip_324_x",
+  "lip_324_y",
+  "lip_402_x",
+  "lip_402_y",
+  "left_hand_detection_ratio",
+  "right_hand_detection_ratio",
+  "pose_detection_ratio",
+  "lip_detection_ratio",
+  "shoulder_reference_valid",
+  "velocity_left_hand_0_x",
+  "velocity_left_hand_0_y",
+  "velocity_left_hand_0_z",
+  "velocity_left_hand_1_x",
+  "velocity_left_hand_1_y",
+  "velocity_left_hand_1_z",
+  "velocity_left_hand_2_x",
+  "velocity_left_hand_2_y",
+  "velocity_left_hand_2_z",
+  "velocity_left_hand_3_x",
+  "velocity_left_hand_3_y",
+  "velocity_left_hand_3_z",
+  "velocity_left_hand_4_x",
+  "velocity_left_hand_4_y",
+  "velocity_left_hand_4_z",
+  "velocity_left_hand_5_x",
+  "velocity_left_hand_5_y",
+  "velocity_left_hand_5_z",
+  "velocity_left_hand_6_x",
+  "velocity_left_hand_6_y",
+  "velocity_left_hand_6_z",
+  "velocity_left_hand_7_x",
+  "velocity_left_hand_7_y",
+  "velocity_left_hand_7_z",
+  "velocity_left_hand_8_x",
+  "velocity_left_hand_8_y",
+  "velocity_left_hand_8_z",
+  "velocity_left_hand_9_x",
+  "velocity_left_hand_9_y",
+  "velocity_left_hand_9_z",
+  "velocity_left_hand_10_x",
+  "velocity_left_hand_10_y",
+  "velocity_left_hand_10_z",
+  "velocity_left_hand_11_x",
+  "velocity_left_hand_11_y",
+  "velocity_left_hand_11_z",
+  "velocity_left_hand_12_x",
+  "velocity_left_hand_12_y",
+  "velocity_left_hand_12_z",
+  "velocity_left_hand_13_x",
+  "velocity_left_hand_13_y",
+  "velocity_left_hand_13_z",
+  "velocity_left_hand_14_x",
+  "velocity_left_hand_14_y",
+  "velocity_left_hand_14_z",
+  "velocity_left_hand_15_x",
+  "velocity_left_hand_15_y",
+  "velocity_left_hand_15_z",
+  "velocity_left_hand_16_x",
+  "velocity_left_hand_16_y",
+  "velocity_left_hand_16_z",
+  "velocity_left_hand_17_x",
+  "velocity_left_hand_17_y",
+  "velocity_left_hand_17_z",
+  "velocity_left_hand_18_x",
+  "velocity_left_hand_18_y",
+  "velocity_left_hand_18_z",
+  "velocity_left_hand_19_x",
+  "velocity_left_hand_19_y",
+  "velocity_left_hand_19_z",
+  "velocity_left_hand_20_x",
+  "velocity_left_hand_20_y",
+  "velocity_left_hand_20_z",
+  "velocity_right_hand_0_x",
+  "velocity_right_hand_0_y",
+  "velocity_right_hand_0_z",
+  "velocity_right_hand_1_x",
+  "velocity_right_hand_1_y",
+  "velocity_right_hand_1_z",
+  "velocity_right_hand_2_x",
+  "velocity_right_hand_2_y",
+  "velocity_right_hand_2_z",
+  "velocity_right_hand_3_x",
+  "velocity_right_hand_3_y",
+  "velocity_right_hand_3_z",
+  "velocity_right_hand_4_x",
+  "velocity_right_hand_4_y",
+  "velocity_right_hand_4_z",
+  "velocity_right_hand_5_x",
+  "velocity_right_hand_5_y",
+  "velocity_right_hand_5_z",
+  "velocity_right_hand_6_x",
+  "velocity_right_hand_6_y",
+  "velocity_right_hand_6_z",
+  "velocity_right_hand_7_x",
+  "velocity_right_hand_7_y",
+  "velocity_right_hand_7_z",
+  "velocity_right_hand_8_x",
+  "velocity_right_hand_8_y",
+  "velocity_right_hand_8_z",
+  "velocity_right_hand_9_x",
+  "velocity_right_hand_9_y",
+  "velocity_right_hand_9_z",
+  "velocity_right_hand_10_x",
+  "velocity_right_hand_10_y",
+  "velocity_right_hand_10_z",
+  "velocity_right_hand_11_x",
+  "velocity_right_hand_11_y",
+  "velocity_right_hand_11_z",
+  "velocity_right_hand_12_x",
+  "velocity_right_hand_12_y",
+  "velocity_right_hand_12_z",
+  "velocity_right_hand_13_x",
+  "velocity_right_hand_13_y",
+  "velocity_right_hand_13_z",
+  "velocity_right_hand_14_x",
+  "velocity_right_hand_14_y",
+  "velocity_right_hand_14_z",
+  "velocity_right_hand_15_x",
+  "velocity_right_hand_15_y",
+  "velocity_right_hand_15_z",
+  "velocity_right_hand_16_x",
+  "velocity_right_hand_16_y",
+  "velocity_right_hand_16_z",
+  "velocity_right_hand_17_x",
+  "velocity_right_hand_17_y",
+  "velocity_right_hand_17_z",
+  "velocity_right_hand_18_x",
+  "velocity_right_hand_18_y",
+  "velocity_right_hand_18_z",
+  "velocity_right_hand_19_x",
+  "velocity_right_hand_19_y",
+  "velocity_right_hand_19_z",
+  "velocity_right_hand_20_x",
+  "velocity_right_hand_20_y",
+  "velocity_right_hand_20_z",
+  "velocity_pose_0_x",
+  "velocity_pose_0_y",
+  "velocity_pose_11_x",
+  "velocity_pose_11_y",
+  "velocity_pose_12_x",
+  "velocity_pose_12_y",
+  "velocity_pose_13_x",
+  "velocity_pose_13_y",
+  "velocity_pose_14_x",
+  "velocity_pose_14_y",
+  "velocity_pose_15_x",
+  "velocity_pose_15_y",
+  "velocity_pose_16_x",
+  "velocity_pose_16_y",
+  "velocity_pose_23_x",
+  "velocity_pose_23_y",
+  "velocity_pose_24_x",
+  "velocity_pose_24_y",
+  "acceleration_left_hand_0_x",
+  "acceleration_left_hand_0_y",
+  "acceleration_left_hand_0_z",
+  "acceleration_left_hand_1_x",
+  "acceleration_left_hand_1_y",
+  "acceleration_left_hand_1_z",
+  "acceleration_left_hand_2_x",
+  "acceleration_left_hand_2_y",
+  "acceleration_left_hand_2_z",
+  "acceleration_left_hand_3_x",
+  "acceleration_left_hand_3_y",
+  "acceleration_left_hand_3_z",
+  "acceleration_left_hand_4_x",
+  "acceleration_left_hand_4_y",
+  "acceleration_left_hand_4_z",
+  "acceleration_left_hand_5_x",
+  "acceleration_left_hand_5_y",
+  "acceleration_left_hand_5_z",
+  "acceleration_left_hand_6_x",
+  "acceleration_left_hand_6_y",
+  "acceleration_left_hand_6_z",
+  "acceleration_left_hand_7_x",
+  "acceleration_left_hand_7_y",
+  "acceleration_left_hand_7_z",
+  "acceleration_left_hand_8_x",
+  "acceleration_left_hand_8_y",
+  "acceleration_left_hand_8_z",
+  "acceleration_left_hand_9_x",
+  "acceleration_left_hand_9_y",
+  "acceleration_left_hand_9_z",
+  "acceleration_left_hand_10_x",
+  "acceleration_left_hand_10_y",
+  "acceleration_left_hand_10_z",
+  "acceleration_left_hand_11_x",
+  "acceleration_left_hand_11_y",
+  "acceleration_left_hand_11_z",
+  "acceleration_left_hand_12_x",
+  "acceleration_left_hand_12_y",
+  "acceleration_left_hand_12_z",
+  "acceleration_left_hand_13_x",
+  "acceleration_left_hand_13_y",
+  "acceleration_left_hand_13_z",
+  "acceleration_left_hand_14_x",
+  "acceleration_left_hand_14_y",
+  "acceleration_left_hand_14_z",
+  "acceleration_left_hand_15_x",
+  "acceleration_left_hand_15_y",
+  "acceleration_left_hand_15_z",
+  "acceleration_left_hand_16_x",
+  "acceleration_left_hand_16_y",
+  "acceleration_left_hand_16_z",
+  "acceleration_left_hand_17_x",
+  "acceleration_left_hand_17_y",
+  "acceleration_left_hand_17_z",
+  "acceleration_left_hand_18_x",
+  "acceleration_left_hand_18_y",
+  "acceleration_left_hand_18_z",
+  "acceleration_left_hand_19_x",
+  "acceleration_left_hand_19_y",
+  "acceleration_left_hand_19_z",
+  "acceleration_left_hand_20_x",
+  "acceleration_left_hand_20_y",
+  "acceleration_left_hand_20_z",
+  "acceleration_right_hand_0_x",
+  "acceleration_right_hand_0_y",
+  "acceleration_right_hand_0_z",
+  "acceleration_right_hand_1_x",
+  "acceleration_right_hand_1_y",
+  "acceleration_right_hand_1_z",
+  "acceleration_right_hand_2_x",
+  "acceleration_right_hand_2_y",
+  "acceleration_right_hand_2_z",
+  "acceleration_right_hand_3_x",
+  "acceleration_right_hand_3_y",
+  "acceleration_right_hand_3_z",
+  "acceleration_right_hand_4_x",
+  "acceleration_right_hand_4_y",
+  "acceleration_right_hand_4_z",
+  "acceleration_right_hand_5_x",
+  "acceleration_right_hand_5_y",
+  "acceleration_right_hand_5_z",
+  "acceleration_right_hand_6_x",
+  "acceleration_right_hand_6_y",
+  "acceleration_right_hand_6_z",
+  "acceleration_right_hand_7_x",
+  "acceleration_right_hand_7_y",
+  "acceleration_right_hand_7_z",
+  "acceleration_right_hand_8_x",
+  "acceleration_right_hand_8_y",
+  "acceleration_right_hand_8_z",
+  "acceleration_right_hand_9_x",
+  "acceleration_right_hand_9_y",
+  "acceleration_right_hand_9_z",
+  "acceleration_right_hand_10_x",
+  "acceleration_right_hand_10_y",
+  "acceleration_right_hand_10_z",
+  "acceleration_right_hand_11_x",
+  "acceleration_right_hand_11_y",
+  "acceleration_right_hand_11_z",
+  "acceleration_right_hand_12_x",
+  "acceleration_right_hand_12_y",
+  "acceleration_right_hand_12_z",
+  "acceleration_right_hand_13_x",
+  "acceleration_right_hand_13_y",
+  "acceleration_right_hand_13_z",
+  "acceleration_right_hand_14_x",
+  "acceleration_right_hand_14_y",
+  "acceleration_right_hand_14_z",
+  "acceleration_right_hand_15_x",
+  "acceleration_right_hand_15_y",
+  "acceleration_right_hand_15_z",
+  "acceleration_right_hand_16_x",
+  "acceleration_right_hand_16_y",
+  "acceleration_right_hand_16_z",
+  "acceleration_right_hand_17_x",
+  "acceleration_right_hand_17_y",
+  "acceleration_right_hand_17_z",
+  "acceleration_right_hand_18_x",
+  "acceleration_right_hand_18_y",
+  "acceleration_right_hand_18_z",
+  "acceleration_right_hand_19_x",
+  "acceleration_right_hand_19_y",
+  "acceleration_right_hand_19_z",
+  "acceleration_right_hand_20_x",
+  "acceleration_right_hand_20_y",
+  "acceleration_right_hand_20_z",
+  "acceleration_pose_0_x",
+  "acceleration_pose_0_y",
+  "acceleration_pose_11_x",
+  "acceleration_pose_11_y",
+  "acceleration_pose_12_x",
+  "acceleration_pose_12_y",
+  "acceleration_pose_13_x",
+  "acceleration_pose_13_y",
+  "acceleration_pose_14_x",
+  "acceleration_pose_14_y",
+  "acceleration_pose_15_x",
+  "acceleration_pose_15_y",
+  "acceleration_pose_16_x",
+  "acceleration_pose_16_y",
+  "acceleration_pose_23_x",
+  "acceleration_pose_23_y",
+  "acceleration_pose_24_x",
+  "acceleration_pose_24_y",
+  "wrist_to_wrist_distance",
+  "left_wrist_to_mouth_distance",
+  "right_wrist_to_mouth_distance",
+  "left_wrist_to_nose_distance",
+  "right_wrist_to_nose_distance",
+  "left_wrist_to_shoulder_distance",
+  "right_wrist_to_shoulder_distance",
+  "left_hand_spread",
+  "right_hand_spread",
+  "left_thumb_index_distance",
+  "right_thumb_index_distance",
+  "left_hand_to_pose_wrist_distance",
+  "right_hand_to_pose_wrist_distance",
+  "left_fingertip_to_mouth_min_distance",
+  "right_fingertip_to_mouth_min_distance"
+]

@@ -1,0 +1,23 @@
+name: Feature request
+description: Suggest a scoped improvement to the research prototype.
+title: "[Feature]: "
+labels: [enhancement]
+body:
+  - type: textarea
+    id: problem
+    attributes:
+      label: Problem and intended user
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed change
+    validations:
+      required: true
+  - type: textarea
+    id: risks
+    attributes:
+      label: Privacy, accessibility, and evaluation risks
+    validations:
+      required: true
