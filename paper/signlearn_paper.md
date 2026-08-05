@@ -2,7 +2,7 @@
 
 **Draft manuscript — not peer reviewed**  
 **Author note:** *Identity and affiliation omitted from this working draft*  
-**Date:** 5 August 2026
+
 
 ## Abstract
 
