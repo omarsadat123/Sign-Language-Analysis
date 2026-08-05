@@ -18,6 +18,24 @@ jobs:
           cache: pip
       - name: Install lightweight test dependencies
         run: python -m pip install -r requirements-dev.txt
+      - name: Check required repository files
+        run: |
+          required=(
+            models/deployment_manifest.json
+            models/feature_configuration.json
+            models/frame_feature_names.json
+            models/label_map.json
+            models/signlearn_model.keras
+            models/temporal_configuration.json
+            research/results/final_audit_decision.json
+            research/results/final_holdout_comparison.csv
+          )
+          for file in "${required[@]}"; do
+            if [[ ! -f "$file" ]]; then
+              echo "::error file=$file::Required repository file is missing"
+              exit 1
+            fi
+          done
       - name: Run unit tests
         run: python -m unittest discover -s tests -v
       - name: Lint
