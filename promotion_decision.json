@@ -1,7 +1,0 @@
-.PHONY: pdf clean
-
-pdf:
-	latexmk -pdf signlearn_paper.tex
-
-clean:
-	latexmk -C
