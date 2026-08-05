@@ -1,0 +1,53 @@
+{
+  "experiment": "SignLearn-09 final comparative internal holdout audit",
+  "training_performed": false,
+  "internal_holdout_note": "Google test signers were used for this frozen comparative audit; this split has appeared in earlier project reports and is not claimed as a pristine external test.",
+  "external_test_status": "WLASL not loaded or used",
+  "frozen_rules": {
+    "minimum_test_macro_f1_gain": 0.0,
+    "test_accuracy_tolerance": 0.001,
+    "test_mirror_f1_tolerance": 0.005
+  },
+  "production_model_sha256": "6059e76dec47d4d1da20c6d21f32a3f625308c25088bbe85f4f73192a21b8d70",
+  "candidate_model_sha256": "5fcce7f542d60eaaf36f4f78978a00125a520346a75dc8f71571e465fa3d11d5",
+  "production_original": {
+    "accuracy": 0.7112860892388452,
+    "macro_f1": 0.7103869358807446,
+    "top5_accuracy": 0.9002624671916011
+  },
+  "production_mirrored": {
+    "accuracy": 0.6974128233970753,
+    "macro_f1": 0.6987939666086658,
+    "top5_accuracy": 0.8875140607424072
+  },
+  "candidate_original": {
+    "accuracy": 0.7169103862017248,
+    "macro_f1": 0.7159501109184306,
+    "top5_accuracy": 0.8968878890138733
+  },
+  "candidate_mirrored": {
+    "accuracy": 0.7071616047994,
+    "macro_f1": 0.7098341188796451,
+    "top5_accuracy": 0.8852643419572553
+  },
+  "macro_f1_gain": 0.005563175037685997,
+  "accuracy_gain": 0.0056242969628795825,
+  "mirrored_macro_f1_gain": 0.01104015227097932,
+  "approve_for_app_integration": true,
+  "selective_metrics": [
+    {
+      "model": "production_189",
+      "threshold": 0.59,
+      "coverage": 0.7742782152230971,
+      "accepted_accuracy": 0.8368038740920097,
+      "accepted_count": 2065
+    },
+    {
+      "model": "candidate_492",
+      "threshold": 0.6,
+      "coverage": 0.7750281214848144,
+      "accepted_accuracy": 0.8403483309143687,
+      "accepted_count": 2067
+    }
+  ]
+}

@@ -1,0 +1,51 @@
+{
+  "experiment": "SignLearn-08B macro-F1-selected transfer motion fusion",
+  "development_data": "Google train and validation signers only",
+  "google_test_status": "quarantined; no predictions computed",
+  "external_test_status": "WLASL not loaded or used",
+  "source_input_shape": [
+    1,
+    48,
+    189
+  ],
+  "candidate_input_shape": [
+    1,
+    48,
+    492
+  ],
+  "initialization_max_abs_prediction_error": 0.0,
+  "promotion_rules": {
+    "minimum_macro_f1_gain": 0.002,
+    "accuracy_tolerance": 0.001,
+    "mirrored_macro_f1_tolerance": 0.005
+  },
+  "source_validation_original": {
+    "accuracy": 0.7325162220620043,
+    "macro_f1": 0.7300138106043123,
+    "top5_accuracy": 0.934030281182408
+  },
+  "source_validation_mirrored": {
+    "accuracy": 0.7015140591204038,
+    "macro_f1": 0.7000459294513014,
+    "top5_accuracy": 0.9124008651766402
+  },
+  "candidate_validation_original": {
+    "accuracy": 0.7354001441961067,
+    "macro_f1": 0.7333603214116883,
+    "top5_accuracy": 0.9311463590483057
+  },
+  "candidate_validation_mirrored": {
+    "accuracy": 0.7054794520547946,
+    "macro_f1": 0.7048446854846085,
+    "top5_accuracy": 0.9113193943763518
+  },
+  "macro_f1_gain": 0.003346510807376024,
+  "accuracy_gain": 0.002883922134102379,
+  "mirrored_macro_f1_gain": 0.00479875603330715,
+  "promote_candidate": true,
+  "candidate_confidence_threshold": 0.6,
+  "source_model_sha256": "6059e76dec47d4d1da20c6d21f32a3f625308c25088bbe85f4f73192a21b8d70",
+  "candidate_model_sha256": "5fcce7f542d60eaaf36f4f78978a00125a520346a75dc8f71571e465fa3d11d5",
+  "checkpoint_selection_metric": "validation macro F1 evaluated after every epoch",
+  "best_macro_f1_epoch": 2
+}
