@@ -122,7 +122,7 @@ chmod +x run_app.sh
 ./run_app.sh
 ```
 
-Open <http://127.0.0.1:7860> after the server starts.
+Open the server when starts.
 
 ### Manual setup
 
