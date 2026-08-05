@@ -1,0 +1,7 @@
+# Tested target: Python 3.11
+tensorflow==2.20.0
+mediapipe==1.0.0
+gradio==6.20.0
+imageio-ffmpeg==0.6.0
+opencv-contrib-python>=4.10,<5
+numpy>=1.26,<2.3

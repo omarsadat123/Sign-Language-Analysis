@@ -1,0 +1,7 @@
+*.keras binary
+*.task binary
+*.mp4 binary
+*.png binary
+*.ipynb linguist-language=Jupyter Notebook
+* text=auto eol=lf
+*.ps1 text eol=crlf
